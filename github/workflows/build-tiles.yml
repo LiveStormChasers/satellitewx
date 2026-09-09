@@ -1,1 +1,62 @@
+name: build tiles
 
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      satellite:
+        description: GOES18 or GOES19
+        default: GOES19
+      max_zoom:
+        description: highest zoom to build
+        default: "7"
+
+concurrency:
+  group: build-tiles
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        satellite: [GOES19, GOES18]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install --quiet numpy pillow
+
+      - name: Build frame
+        run: |
+          python tiler.py \
+            --satellite ${{ github.event.inputs.satellite || matrix.satellite }} \
+            --size 10848 \
+            --min-zoom 3 \
+            --max-zoom ${{ github.event.inputs.max_zoom || '7' }} \
+            --out out
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          SAT=$(echo "${{ github.event.inputs.satellite || matrix.satellite }}" | tr 'A-Z' 'a-z')
+          for ext in pack idx json; do
+            aws s3 cp "out/$SAT.$ext" "s3://$BUCKET/latest/$SAT.$ext" \
+              --endpoint-url "$ENDPOINT" --only-show-errors
+          done
+          echo "uploaded $SAT"
+
+      - name: Summary
+        run: cat out/*.json
