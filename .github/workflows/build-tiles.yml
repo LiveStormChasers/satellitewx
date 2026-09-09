@@ -5,9 +5,6 @@ on:
     - cron: "*/10 * * * *"
   workflow_dispatch:
     inputs:
-      satellite:
-        description: GOES18 or GOES19
-        default: GOES19
       max_zoom:
         description: highest zoom to build
         default: "7"
@@ -37,7 +34,7 @@ jobs:
       - name: Build frame
         run: |
           python tiler.py \
-            --satellite ${{ github.event.inputs.satellite || matrix.satellite }} \
+            --satellite ${{ matrix.satellite }} \
             --size 10848 \
             --min-zoom 3 \
             --max-zoom ${{ github.event.inputs.max_zoom || '7' }} \
@@ -51,7 +48,7 @@ jobs:
           ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
           BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          SAT=$(echo "${{ github.event.inputs.satellite || matrix.satellite }}" | tr 'A-Z' 'a-z')
+          SAT=$(echo '${{ matrix.satellite }}' | tr 'A-Z' 'a-z')
           for ext in pack idx json; do
             aws s3 cp "out/$SAT.$ext" "s3://$BUCKET/latest/$SAT.$ext" \
               --endpoint-url "$ENDPOINT" --only-show-errors
