@@ -15,6 +15,7 @@ import json
 import math
 import struct
 import time
+import urllib.error
 import urllib.request
 
 import numpy as np
@@ -138,19 +139,51 @@ def render_tile(src, size, lon0, z, tx, ty):
 
 # --- source ---------------------------------------------------------------
 def fetch_disk(sat, size, timeout=180):
-    """Download a STAR full disk and return (array, size, url)."""
+    """Download a STAR full disk and return (array, size, url).
+
+    STAR's naming for the per-size "latest" file is not documented, so try the
+    known patterns in order and fall back to latest.jpg, which NOAA publishes
+    as the canonical current full disk. The rendered size is read off the image
+    itself, so whichever one answers is fine.
+    """
     star = SATS[sat]["star"]
     base = f"https://cdn.star.nesdis.noaa.gov/{star}/ABI/FD/GEOCOLOR/"
-    url = base + (f"latest_{star}-ABI-FD-GEOCOLOR-{size}x{size}.jpg"
-                  if size else "latest.jpg")
-    req = urllib.request.Request(url, headers={"User-Agent": "LiveStormChasers-satellitewx"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read()
-    img = Image.open(io.BytesIO(raw)).convert("RGB")
-    if img.width != img.height:
-        raise SystemExit(f"{url} is {img.width}x{img.height}, not square — "
-                         "that file has a banner and is not the bare fixed grid")
-    return np.asarray(img), img.width, url
+
+    candidates = []
+    if size:
+        candidates += [
+            f"{size}x{size}.jpg",
+            f"latest_{size}x{size}.jpg",
+            f"latest_{star}-ABI-FD-GEOCOLOR-{size}x{size}.jpg",
+        ]
+    candidates.append("latest.jpg")
+
+    tried = []
+    for fname in candidates:
+        url = base + fname
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "LiveStormChasers-satellitewx"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+        except urllib.error.HTTPError as e:
+            tried.append(f"{fname} -> HTTP {e.code}")
+            continue
+        except urllib.error.URLError as e:
+            tried.append(f"{fname} -> {e.reason}")
+            continue
+
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        if img.width != img.height:
+            tried.append(f"{fname} -> {img.width}x{img.height} not square")
+            continue
+
+        print(f"  source: {fname} ({img.width}x{img.width})", flush=True)
+        if tried:
+            print("  skipped: " + "; ".join(tried), flush=True)
+        return np.asarray(img), img.width, url
+
+    raise SystemExit("No usable full disk found. Tried: " + "; ".join(tried))
 
 
 # --- packing --------------------------------------------------------------
