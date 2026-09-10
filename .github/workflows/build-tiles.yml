@@ -35,7 +35,7 @@ jobs:
         run: |
           python tiler.py \
             --satellite ${{ matrix.satellite }} \
-            --size 10848 \
+            --size 21696 \
             --min-zoom 3 \
             --max-zoom ${{ github.event.inputs.max_zoom || '7' }} \
             --out out
