@@ -21,6 +21,11 @@ import urllib.request
 import numpy as np
 from PIL import Image
 
+# The 21696 full disk is 470 megapixels, well past Pillow's decompression-bomb
+# guard (179 MP). That guard is there for untrusted uploads; this is NOAA's own
+# CDN at a size we asked for, so lift it.
+Image.MAX_IMAGE_PIXELS = None
+
 # --- fixed grid constants -------------------------------------------------
 REQ = 6378137.0
 RPOL = 6356752.31414
